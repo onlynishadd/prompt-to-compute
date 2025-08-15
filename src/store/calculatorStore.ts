@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { aiService } from "@/services/aiService";
 
 interface CalculatorState {
   prompt: string;
@@ -17,22 +18,21 @@ export const useCalculatorStore = create<CalculatorState>((set, get) => ({
   reset: () => set({ prompt: "", generating: false, spec: null }),
   generate: async () => {
     if (get().generating) return;
-    set({ generating: true });
+    set({ generating: true, spec: null }); // Also reset previous spec
 
-    // Simulate AI generation for MVP UI only
-    await new Promise((r) => setTimeout(r, 900));
-
-    const sampleSpec = {
-      title: "Loan Payment Calculator",
-      fields: [
-        { id: "amount", label: "Amount", type: "number", placeholder: "20000" },
-        { id: "rate", label: "APR %", type: "number", placeholder: "6.5" },
-        { id: "term", label: "Years", type: "number", placeholder: "5" },
-      ],
-      formula: "PMT((rate/100)/12, term*12, -amount)",
-      cta: "Calculate Payment",
-    };
-
-    set({ spec: JSON.stringify(sampleSpec, null, 2), generating: false });
+    try {
+      const prompt = get().prompt;
+      if (!prompt.trim()) {
+        console.error("Prompt is empty, cannot generate.");
+        return;
+      }
+      
+      const generatedSpec = await aiService.generateCalculator(prompt);
+      set({ spec: JSON.stringify(generatedSpec, null, 2) });
+    } catch (error) {
+      console.error("Error generating calculator:", error);
+    } finally {
+      set({ generating: false });
+    }
   },
 }));

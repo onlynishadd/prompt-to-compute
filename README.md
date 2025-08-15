@@ -1,73 +1,163 @@
-# Welcome to your Lovable project
+# Calculator Platform
 
-## Project info
+A comprehensive platform for creating, sharing, and managing interactive calculators. Transform simple prompts into powerful calculation tools with full community features.
 
-**URL**: https://lovable.dev/projects/f1ee30e6-693d-4f45-83d3-14a6bd7740d5
+## ✨ Features
 
-## How can I edit this code?
+### 🔧 Calculator Creation
+- **AI-Powered Generation**: Create calculators from natural language prompts
+- **Live Preview**: See your calculator in action as you build it
+- **Custom Specifications**: Fine-tune calculator behavior with JSON specs
 
-There are several ways of editing your application.
+### 👥 User Management
+- **Authentication**: Sign in with email or Google OAuth
+- **User Profiles**: Manage your account and calculator collection
+- **Secure Access**: Row-level security with Supabase
 
-**Use Lovable**
+### 📚 Calculator Library
+- **Personal Collection**: Save and organize your calculators
+- **Public Gallery**: Discover calculators shared by the community
+- **Template System**: Access pre-built calculator templates
+- **Search & Filter**: Find calculators by category, tags, or keywords
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/f1ee30e6-693d-4f45-83d3-14a6bd7740d5) and start prompting.
+### 🚀 Sharing & Collaboration
+- **Public Sharing**: Make your calculators discoverable by others
+- **Fork System**: Create copies of existing calculators to customize
+- **Like System**: Show appreciation for useful calculators
+- **Community Templates**: Share your best calculators as templates
 
-Changes made via Lovable will be committed automatically to this repo.
+### 📊 Analytics & Engagement
+- **View Tracking**: Monitor how many people use your calculators
+- **Like Counter**: See community engagement with your creations
+- **Fork Counter**: Track how many times your calculators are copied
 
-**Use your preferred IDE**
+## 🛠️ Tech Stack
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- **Frontend**: React 18, TypeScript, Vite
+- **UI Components**: shadcn/ui with Tailwind CSS
+- **Backend**: Supabase (PostgreSQL, Auth, RLS)
+- **State Management**: Zustand
+- **Forms**: React Hook Form with Zod validation
+- **Routing**: React Router DOM
+- **Icons**: Lucide React
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## 🚀 Getting Started
 
-Follow these steps:
+### Prerequisites
+- Node.js (v18 or higher)
+- npm or yarn
+- Supabase account
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### Installation
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/onlynishadd/prompt-to-compute.git
+   cd prompt-to-compute
+   ```
 
-# Step 3: Install the necessary dependencies.
-npm i
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+3. **Set up Supabase**
+   - Create a new Supabase project
+   - Copy your project URL and anon key
+   - Update the environment variables in `src/.env.local`:
+     ```
+     VITE_SUPABASE_URL=your_supabase_url
+     VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+     ```
+
+4. **Run database migrations**
+   - Go to your Supabase dashboard
+   - Navigate to SQL Editor
+   - Run the migration file: `supabase/migrations/20240114000000_calculator_platform.sql`
+
+5. **Configure Authentication**
+   - In Supabase dashboard, go to Authentication > Providers
+   - Enable Email and Google providers
+   - For Google OAuth, add your OAuth credentials
+
+6. **Start the development server**
+   ```bash
+   npm run dev
+   ```
+
+## 📁 Project Structure
+
+```
+src/
+├── components/
+│   ├── auth/                 # Authentication components
+│   │   ├── LoginDialog.tsx
+│   │   └── UserProfile.tsx
+│   ├── calculator/           # Calculator-related components
+│   │   ├── CalculatorCard.tsx
+│   │   ├── CalculatorGallery.tsx
+│   │   └── SaveCalculatorDialog.tsx
+│   ├── ui/                   # UI components (shadcn/ui)
+│   ├── CalculatorPreview.tsx
+│   └── PromptComposer.tsx
+├── contexts/
+│   └── AuthContext.tsx       # Authentication context
+├── lib/
+│   ├── supabase.ts          # Supabase client & types
+│   └── utils.ts             # Utility functions
+├── pages/
+│   ├── Index.tsx            # Main application page
+│   └── NotFound.tsx         # 404 page
+├── services/
+│   └── calculatorService.ts # Calculator CRUD operations
+└── store/
+    └── calculatorStore.ts   # Calculator state management
 ```
 
-**Edit a file directly in GitHub**
+## 🗄️ Database Schema
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Tables
+- **profiles**: User profile information
+- **calculators**: Calculator specifications and metadata
+- **calculator_likes**: User likes for calculators
+- **calculator_forks**: Fork relationships between calculators
 
-**Use GitHub Codespaces**
+### Key Features
+- Row Level Security (RLS) for data protection
+- Automatic profile creation on user signup
+- Automatic count updates for likes/forks/views
+- Efficient indexing for performance
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 🔐 Security
 
-## What technologies are used for this project?
+- **Row Level Security**: All data access is controlled by Supabase RLS policies
+- **Authentication**: Secure user authentication with Supabase Auth
+- **Data Validation**: Client-side and server-side validation
+- **HTTPS Only**: All communication encrypted
 
-This project is built with:
+## 🤝 Contributing
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/new-feature`
+3. Commit your changes: `git commit -am 'Add new feature'`
+4. Push to the branch: `git push origin feature/new-feature`
+5. Submit a pull request
 
-## How can I deploy this project?
+## 🆘 Support
 
-Simply open [Lovable](https://lovable.dev/projects/f1ee30e6-693d-4f45-83d3-14a6bd7740d5) and click on Share -> Publish.
+If you encounter any issues or have questions:
 
-## Can I connect a custom domain to my Lovable project?
+1. Check the [Issues](https://github.com/onlynishadd/prompt-to-compute/issues) page
+2. Create a new issue if your problem isn't already reported
+3. Provide detailed information about your environment and the issue
 
-Yes, you can!
+## 🙏 Acknowledgments
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- Built with [Vite](https://vitejs.dev/) and [React](https://reactjs.org/)
+- UI components by [shadcn/ui](https://ui.shadcn.com/)
+- Backend powered by [Supabase](https://supabase.com/)
+- Icons by [Lucide](https://lucide.dev/)
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+---
+
+**Happy calculating!** 🧮✨
