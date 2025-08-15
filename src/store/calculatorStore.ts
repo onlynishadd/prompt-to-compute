@@ -1,38 +1,213 @@
 import { create } from "zustand";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 interface CalculatorState {
   prompt: string;
   generating: boolean;
   spec: string | null;
+  savedCalculators: any[];
+  loadingCalculators: boolean;
   setPrompt: (v: string) => void;
   generate: () => Promise<void>;
+  saveCalculator: (title: string, isPublic?: boolean) => Promise<void>;
+  loadUserCalculators: () => Promise<void>;
   reset: () => void;
 }
+
+// Gemini API configuration
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
 
 export const useCalculatorStore = create<CalculatorState>((set, get) => ({
   prompt: "",
   generating: false,
   spec: null,
+  savedCalculators: [],
+  loadingCalculators: false,
   setPrompt: (v) => set({ prompt: v }),
   reset: () => set({ prompt: "", generating: false, spec: null }),
+  
   generate: async () => {
     if (get().generating) return;
     set({ generating: true });
 
-    // Simulate AI generation for MVP UI only
-    await new Promise((r) => setTimeout(r, 900));
+    try {
+      const prompt = get().prompt;
+      
+      if (!GEMINI_API_KEY) {
+        throw new Error("Gemini API key not configured");
+      }
 
-    const sampleSpec = {
-      title: "Loan Payment Calculator",
-      fields: [
-        { id: "amount", label: "Amount", type: "number", placeholder: "20000" },
-        { id: "rate", label: "APR %", type: "number", placeholder: "6.5" },
-        { id: "term", label: "Years", type: "number", placeholder: "5" },
-      ],
-      formula: "PMT((rate/100)/12, term*12, -amount)",
-      cta: "Calculate Payment",
-    };
+      const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Generate a calculator specification based on this prompt: "${prompt}"
 
-    set({ spec: JSON.stringify(sampleSpec, null, 2), generating: false });
+Please return a JSON object with the following structure:
+{
+  "title": "Calculator Title",
+  "fields": [
+    {
+      "id": "field_id",
+      "label": "Field Label",
+      "type": "number|text|select",
+      "placeholder": "Placeholder text",
+      "options": ["option1", "option2"] // only for select type
+    }
+  ],
+  "formula": "JavaScript formula or calculation logic",
+  "cta": "Calculate Button Text",
+  "description": "Brief description of what this calculator does"
+}
+
+Make sure the response is valid JSON only, no additional text.`
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+        throw new Error("Invalid response from Gemini API");
+      }
+
+      const generatedText = data.candidates[0].content.parts[0].text;
+      
+      // Try to extract JSON from the response
+      let jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("Could not extract JSON from Gemini response");
+      }
+
+      const calculatorSpec = JSON.parse(jsonMatch[0]);
+      
+      // Validate the spec structure
+      if (!calculatorSpec.title || !calculatorSpec.fields || !Array.isArray(calculatorSpec.fields)) {
+        throw new Error("Invalid calculator specification structure");
+      }
+
+      set({ spec: JSON.stringify(calculatorSpec, null, 2), generating: false });
+      
+      toast({
+        title: "Calculator generated!",
+        description: `Successfully created "${calculatorSpec.title}" calculator.`,
+      });
+
+    } catch (error) {
+      console.error('Error generating calculator:', error);
+      
+      // Fallback to sample data if API fails
+      const sampleSpec = {
+        title: "Loan Payment Calculator",
+        fields: [
+          { id: "amount", label: "Amount", type: "number", placeholder: "20000" },
+          { id: "rate", label: "APR %", type: "number", placeholder: "6.5" },
+          { id: "term", label: "Years", type: "number", placeholder: "5" },
+        ],
+        formula: "PMT((rate/100)/12, term*12, -amount)",
+        cta: "Calculate Payment",
+        description: "Calculate monthly loan payments based on principal, interest rate, and term."
+      };
+
+      set({ spec: JSON.stringify(sampleSpec, null, 2), generating: false });
+      
+      toast({
+        title: "Generation completed",
+        description: "Using sample calculator (API unavailable).",
+        variant: "default",
+      });
+    }
+  },
+
+  saveCalculator: async (title: string, isPublic = false) => {
+    const { spec, prompt } = get();
+    if (!spec) {
+      toast({
+        title: "No calculator to save",
+        description: "Please generate a calculator first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to save calculators.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('calculators')
+        .insert({
+          user_id: user.id,
+          title,
+          prompt,
+          spec: JSON.parse(spec),
+          is_public: isPublic,
+          slug: title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Calculator saved!",
+        description: "Your calculator has been saved successfully.",
+      });
+
+      // Reload user calculators
+      get().loadUserCalculators();
+    } catch (error) {
+      console.error('Error saving calculator:', error);
+      toast({
+        title: "Save failed",
+        description: "Failed to save calculator. Please try again.",
+        variant: "destructive",
+      });
+    }
+  },
+
+  loadUserCalculators: async () => {
+    try {
+      set({ loadingCalculators: true });
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        set({ savedCalculators: [], loadingCalculators: false });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('calculators')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      set({ savedCalculators: data || [], loadingCalculators: false });
+    } catch (error) {
+      console.error('Error loading calculators:', error);
+      set({ loadingCalculators: false });
+    }
   },
 }));
