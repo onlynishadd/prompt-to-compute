@@ -48,6 +48,15 @@ export type Database = {
           is_public?: boolean
           slug?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: "calculators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       },
       profiles: {
         Row: {

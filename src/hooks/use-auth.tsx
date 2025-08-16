@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_IN' && session?.user) {
         // Create or update user profile
         const { error } = await supabase
-          .from('users')
+          .from('profiles')
           .upsert({
             id: session.user.id,
             email: session.user.email!,
