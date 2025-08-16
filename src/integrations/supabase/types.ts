@@ -14,33 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-<<<<<<< HEAD
-      users: {
-        Row: {
-          id: string
-          email: string
-          created_at: string
-          updated_at: string
-          full_name: string | null
-          avatar_url: string | null
-        }
-        Insert: {
-          id: string
-          email: string
-          created_at?: string
-          updated_at?: string
-          full_name?: string | null
-          avatar_url?: string | null
-        }
-        Update: {
-          id?: string
-          email?: string
-          created_at?: string
-          updated_at?: string
-          full_name?: string | null
-          avatar_url?: string | null
-        }
-      }
       calculators: {
         Row: {
           id: string
@@ -75,39 +48,7 @@ export type Database = {
           is_public?: boolean
           slug?: string | null
         }
-=======
-      calculators: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          spec: Json
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-          spec: Json
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          spec?: Json
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "calculators_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
->>>>>>> f1f82f9 (Fix Google sign-in OAuth and restore calculator save functionality)
+      }
       }
     }
     Views: {
