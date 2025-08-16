@@ -2,9 +2,26 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import PromptComposer from "@/components/PromptComposer";
 import CalculatorPreview from "@/components/CalculatorPreview";
+import CalculatorGallery from "@/components/calculator/CalculatorGallery";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Grid, Sparkles } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+
+interface Calculator {
+  id: string;
+  title: string;
+  prompt: string;
+  spec: any;
+  is_public: boolean;
+  likes_count: number;
+  views_count: number;
+  created_at: string;
+  user_id: string;
+  users?: {
+    full_name?: string;
+    email: string;
+  };
+}
 
 const Index = () => {
   const [searchParams] = useSearchParams()
@@ -21,6 +38,10 @@ const Index = () => {
   const handleTabChange = (value: string) => {
     setActiveTab(value)
     navigate(`/?tab=${value}`, { replace: true })
+  }
+
+  const handleCalculatorSelect = (calculator: Calculator) => {
+    navigate(`/calculator/${calculator.id}`)
   }
 
   return (
@@ -54,9 +75,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="explore">
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Calculator gallery coming soon!</p>
-            </div>
+            <CalculatorGallery onCalculatorSelect={handleCalculatorSelect} />
           </TabsContent>
         </Tabs>
       </main>

@@ -1,252 +1,293 @@
-import React, { useState, useEffect } from 'react'
-import { calculatorService, Calculator } from '@/services/calculatorService'
-import { CalculatorCard } from './CalculatorCard'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Loader2, Search, Filter, Grid, Sparkles } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
+import { Calculator, Heart, Eye, Search, Loader2, Filter } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-interface CalculatorGalleryProps {
-  onCalculatorSelect?: (calculator: Calculator) => void
+interface Calculator {
+  id: string;
+  title: string;
+  prompt: string;
+  spec: any;
+  is_public: boolean;
+  likes_count: number;
+  views_count: number;
+  created_at: string;
+  user_id: string;
+  users?: {
+    full_name?: string;
+    email: string;
+  };
 }
 
-const CATEGORIES = [
-  'All',
-  'Finance',
-  'Health & Fitness',
-  'Education',
-  'Business',
-  'Real Estate',
-  'Automotive',
-  'Travel',
-  'Utility',
-  'Personal',
-  'Other'
-]
+interface CalculatorGalleryProps {
+  onCalculatorSelect: (calculator: Calculator) => void;
+}
 
-export const CalculatorGallery: React.FC<CalculatorGalleryProps> = ({ onCalculatorSelect }) => {
-  const [calculators, setCalculators] = useState<Calculator[]>([])
-  const [templates, setTemplates] = useState<Calculator[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('All')
-  const [activeTab, setActiveTab] = useState('public')
-
-  const { toast } = useToast()
+export default function CalculatorGallery({ onCalculatorSelect }: CalculatorGalleryProps) {
+  const { user } = useAuth();
+  const [calculators, setCalculators] = useState<Calculator[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
+  const [filterBy, setFilterBy] = useState('all');
 
   useEffect(() => {
-    loadCalculators()
-  }, [activeTab, selectedCategory, searchQuery])
+    loadPublicCalculators();
+  }, [sortBy, filterBy]);
 
-  const loadCalculators = async () => {
-    setLoading(true)
-    
+  const loadPublicCalculators = async () => {
     try {
-      const filters = {
-        category: selectedCategory === 'All' ? undefined : selectedCategory,
-        search: searchQuery || undefined,
-        limit: 20,
-      }
-
-      if (activeTab === 'templates') {
-        const { data, error } = await calculatorService.getTemplateCalculators(20)
-        if (error) throw error
-        setTemplates(data || [])
-      } else {
-        const { data, error } = await calculatorService.getPublicCalculators(20)
-        if (error) throw error
-        
-        // Filter by category and search on frontend for now
-        let filteredData = data || []
-        
-        if (selectedCategory !== 'All') {
-          filteredData = filteredData.filter(calc => calc.category === selectedCategory)
-        }
-        
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase()
-          filteredData = filteredData.filter(calc => 
-            calc.title.toLowerCase().includes(query) ||
-            calc.description?.toLowerCase().includes(query) ||
-            calc.tags?.some(tag => tag.toLowerCase().includes(query))
+      setLoading(true);
+      
+      let query = supabase
+        .from('calculators')
+        .select(`
+          *,
+          users (
+            full_name,
+            email
           )
-        }
-        
-        setCalculators(filteredData)
+        `)
+        .eq('is_public', true);
+
+      // Apply sorting
+      switch (sortBy) {
+        case 'newest':
+          query = query.order('created_at', { ascending: false });
+          break;
+        case 'oldest':
+          query = query.order('created_at', { ascending: true });
+          break;
+        case 'most_liked':
+          query = query.order('likes_count', { ascending: false });
+          break;
+        case 'most_viewed':
+          query = query.order('views_count', { ascending: false });
+          break;
       }
-    } catch (error: any) {
-      toast({
-        title: "Error loading calculators",
-        description: error.message || "Failed to load calculators",
-        variant: "destructive",
-      })
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error loading calculators:', error);
+        return;
+      }
+
+      setCalculators(data || []);
+    } catch (error) {
+      console.error('Error loading calculators:', error);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleLike = async (calculatorId: string) => {
+    if (!user) {
+      // Show sign in prompt
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('calculator_likes')
+        .insert({
+          calculator_id: calculatorId,
+          user_id: user.id,
+        });
+
+      if (error) {
+        if (error.code === '23505') { // Unique constraint violation
+          // Unlike the calculator
+          await supabase
+            .from('calculator_likes')
+            .delete()
+            .eq('calculator_id', calculatorId)
+            .eq('user_id', user.id);
+        } else {
+          console.error('Error liking calculator:', error);
+          return;
+        }
+      }
+
+      // Reload calculators to update like counts
+      loadPublicCalculators();
+    } catch (error) {
+      console.error('Error handling like:', error);
+    }
+  };
+
+  const handleView = async (calculator: Calculator) => {
+    // Increment view count
+    try {
+      await supabase.rpc('increment_calculator_views', {
+        calc_id: calculator.id
+      });
+    } catch (error) {
+      console.error('Error incrementing views:', error);
+    }
+
+    // Navigate to calculator view
+    onCalculatorSelect(calculator);
+  };
+
+  const filteredCalculators = calculators.filter(calculator => {
+    const matchesSearch = calculator.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         calculator.prompt.toLowerCase().includes(searchTerm.toLowerCase());
     
-    setLoading(false)
-  }
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    loadCalculators()
-  }
-
-  const handleLikeToggle = (calculatorId: string, isLiked: boolean) => {
-    const updateList = (list: Calculator[]) =>
-      list.map(calc => 
-        calc.id === calculatorId 
-          ? { ...calc, is_liked: isLiked, likes_count: calc.likes_count + (isLiked ? 1 : -1) }
-          : calc
-      )
+    if (filterBy === 'all') return matchesSearch;
+    if (filterBy === 'recent' && isRecent(calculator.created_at)) return matchesSearch;
+    if (filterBy === 'popular' && calculator.likes_count > 5) return matchesSearch;
     
-    setCalculators(updateList)
-    setTemplates(updateList)
-  }
+    return matchesSearch;
+  });
 
-  const handleFork = (forkedCalculator: Calculator) => {
-    toast({
-      title: "Calculator forked successfully!",
-      description: "The forked calculator has been added to your collection.",
-    })
-  }
+  const isRecent = (createdAt: string) => {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    return new Date(createdAt) > oneWeekAgo;
+  };
 
-  const handleView = (calculator: Calculator) => {
-    onCalculatorSelect?.(calculator)
-  }
-
-  const handleDelete = (calculatorId: string) => {
-    // Remove the deleted calculator from both lists
-    setCalculators(prev => prev.filter(calc => calc.id !== calculatorId))
-    setTemplates(prev => prev.filter(calc => calc.id !== calculatorId))
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
     
-    toast({
-      title: "Calculator deleted",
-      description: "Calculator has been removed from the gallery.",
-    })
-  }
+    if (diffInHours < 24) {
+      return `${diffInHours}h ago`;
+    } else if (diffInHours < 168) {
+      return `${Math.floor(diffInHours / 24)}d ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
 
-  const displayCalculators = activeTab === 'templates' ? templates : calculators
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading calculators...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Grid className="h-5 w-5" />
-            Calculator Gallery
-          </CardTitle>
-          <CardDescription>
-            Discover and use calculators created by the community
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Search and Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <form onSubmit={handleSearch} className="flex-1 flex gap-2">
-              <Input
-                placeholder="Search calculators..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1"
-              />
-              <Button type="submit" variant="outline" size="icon">
-                <Search className="h-4 w-4" />
-              </Button>
-            </form>
-            
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {category}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      {/* Search and Filter Controls */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input
+            placeholder="Search calculators..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        
+        <div className="flex gap-2">
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest</SelectItem>
+              <SelectItem value="oldest">Oldest</SelectItem>
+              <SelectItem value="most_liked">Most Liked</SelectItem>
+              <SelectItem value="most_viewed">Most Viewed</SelectItem>
+            </SelectContent>
+          </Select>
 
-          {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="public" className="flex items-center gap-2">
-                <Grid className="h-4 w-4" />
-                Public Calculators
-              </TabsTrigger>
-              <TabsTrigger value="templates" className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4" />
-                Templates
-              </TabsTrigger>
-            </TabsList>
+          <Select value={filterBy} onValueChange={setFilterBy}>
+            <SelectTrigger className="w-[120px]">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="recent">Recent</SelectItem>
+              <SelectItem value="popular">Popular</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-            <TabsContent value="public" className="mt-6">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  Loading calculators...
-                </div>
-              ) : displayCalculators.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">
-                    {searchQuery || selectedCategory !== 'All' 
-                      ? 'No calculators found matching your criteria.' 
-                      : 'No public calculators available yet.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {displayCalculators.map((calculator) => (
-                    <CalculatorCard
-                      key={calculator.id}
-                      calculator={calculator}
-                      onLikeToggle={handleLikeToggle}
-                      onFork={handleFork}
-                      onView={handleView}
-                      onDelete={handleDelete}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
+      {/* Results Count */}
+      <div className="text-sm text-muted-foreground">
+        {filteredCalculators.length} calculator{filteredCalculators.length !== 1 ? 's' : ''} found
+      </div>
 
-            <TabsContent value="templates" className="mt-6">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  Loading templates...
+      {/* Calculator Grid */}
+      {filteredCalculators.length === 0 ? (
+        <div className="text-center py-12">
+          <Calculator className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No calculators found</h3>
+          <p className="text-muted-foreground">
+            {searchTerm ? 'Try adjusting your search terms' : 'Be the first to create a public calculator!'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredCalculators.map((calculator) => (
+            <Card key={calculator.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <CardTitle className="text-lg line-clamp-2">{calculator.title}</CardTitle>
+                  <Badge variant="secondary" className="text-xs">
+                    {formatDate(calculator.created_at)}
+                  </Badge>
                 </div>
-              ) : displayCalculators.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">
-                    {searchQuery || selectedCategory !== 'All' 
-                      ? 'No templates found matching your criteria.' 
-                      : 'No templates available yet.'}
-                  </p>
+                <p className="text-sm text-muted-foreground line-clamp-2">
+                  {calculator.prompt}
+                </p>
+              </CardHeader>
+              
+              <CardContent className="pt-0">
+                {/* Creator Info */}
+                <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+                  <span>by {calculator.users?.full_name || calculator.users?.email?.split('@')[0] || 'Anonymous'}</span>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {displayCalculators.map((calculator) => (
-                    <CalculatorCard
-                      key={calculator.id}
-                      calculator={calculator}
-                      onLikeToggle={handleLikeToggle}
-                      onFork={handleFork}
-                      onView={handleView}
-                      onDelete={handleDelete}
-                    />
-                  ))}
+
+                {/* Stats */}
+                <div className="flex items-center gap-4 mb-4 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Eye className="h-4 w-4" />
+                    {calculator.views_count || 0}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Heart className="h-4 w-4" />
+                    {calculator.likes_count || 0}
+                  </div>
                 </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => handleView(calculator)}
+                  >
+                    View Calculator
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleLike(calculator.id)}
+                    className={user ? 'hover:text-red-500' : ''}
+                  >
+                    <Heart className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
-  )
+  );
 }

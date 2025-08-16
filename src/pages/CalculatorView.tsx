@@ -1,565 +1,442 @@
-import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useAuth } from '@/contexts/AuthContext'
-import { Layout } from '@/components/layout/Layout'
-import { calculatorService, Calculator } from '@/services/calculatorService'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Separator } from '@/components/ui/separator'
-import { useToast } from '@/hooks/use-toast'
-import { ShareCalculatorDialog } from '@/components/ShareCalculatorDialog'
-import { DeleteCalculatorDialog } from '@/components/DeleteCalculatorDialog'
-import { 
-  ArrowLeft, 
-  Heart, 
-  GitFork, 
-  Eye, 
-  Share2, 
-  Download, 
-  Edit, 
-  Trash2,
-  Calculator as CalculatorIcon,
-  User,
-  Calendar,
-  Tag,
-  Loader2
-} from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
+import { Calculator, Heart, Eye, ArrowLeft, Copy, Share2, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "@/hooks/use-toast";
 
-const CalculatorView: React.FC = () => {
-  const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
-  const { user } = useAuth()
-  const { toast } = useToast()
+interface CalculatorField {
+  id: string;
+  label: string;
+  type: 'number' | 'text' | 'select';
+  placeholder?: string;
+  options?: string[];
+}
 
-  const [calculator, setCalculator] = useState<Calculator | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [isLiking, setIsLiking] = useState(false)
-  const [isForking, setIsForking] = useState(false)
-  const [calculatorInputs, setCalculatorInputs] = useState<{[key: string]: string}>({})
-  const [calculatorResult, setCalculatorResult] = useState<string | null>(null)
+interface CalculatorSpec {
+  title: string;
+  fields: CalculatorField[];
+  formula: string;
+  cta: string;
+  description?: string;
+}
+
+interface CalculatorData {
+  id: string;
+  title: string;
+  prompt: string;
+  spec: CalculatorSpec;
+  is_public: boolean;
+  likes_count: number;
+  views_count: number;
+  created_at: string;
+  user_id: string;
+  users?: {
+    full_name?: string;
+    email: string;
+  };
+}
+
+export default function CalculatorView() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [calculator, setCalculator] = useState<CalculatorData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
+  const [result, setResult] = useState<string | null>(null);
+  const [isLiked, setIsLiked] = useState(false);
 
   useEffect(() => {
     if (id) {
-      loadCalculator()
+      loadCalculator();
+      checkIfLiked();
     }
-  }, [id])
+  }, [id, user]);
 
   const loadCalculator = async () => {
-    if (!id) return
-    
-    setLoading(true)
     try {
-      const { data, error } = await calculatorService.getCalculator(id)
+      setLoading(true);
+      
+      const { data, error } = await supabase
+        .from('calculators')
+        .select(`
+          *,
+          users (
+            full_name,
+            email
+          )
+        `)
+        .eq('id', id)
+        .single();
+
       if (error) {
+        console.error('Error loading calculator:', error);
         toast({
-          title: "Error loading calculator",
-          description: error.message,
+          title: "Calculator not found",
+          description: "The calculator you're looking for doesn't exist.",
           variant: "destructive",
-        })
-        navigate('/')
-        return
+        });
+        navigate('/');
+        return;
       }
-      setCalculator(data)
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load calculator",
-        variant: "destructive",
-      })
-      navigate('/')
+
+      setCalculator(data);
+      
+      // Initialize field values
+      if (data.spec && data.spec.fields) {
+        const initialValues: Record<string, any> = {};
+        data.spec.fields.forEach((field: CalculatorField) => {
+          initialValues[field.id] = '';
+        });
+        setFieldValues(initialValues);
+      }
+
+      // Increment view count
+      await supabase.rpc('increment_calculator_views', {
+        calc_id: id
+      });
+
+    } catch (error) {
+      console.error('Error loading calculator:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false)
-  }
+  };
+
+  const checkIfLiked = async () => {
+    if (!user || !id) return;
+
+    try {
+      const { data } = await supabase
+        .from('calculator_likes')
+        .select('id')
+        .eq('calculator_id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      setIsLiked(!!data);
+    } catch (error) {
+      setIsLiked(false);
+    }
+  };
 
   const handleLike = async () => {
-    if (!calculator || !user) {
+    if (!user) {
       toast({
-        title: "Authentication required",
-        description: "Please sign in to like calculators",
+        title: "Sign in required",
+        description: "Please sign in to like calculators.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    setIsLiking(true)
+    if (!id) return;
+
     try {
-      if (calculator.is_liked) {
-        const { error } = await calculatorService.unlikeCalculator(calculator.id)
-        if (!error) {
-          setCalculator({
-            ...calculator,
-            is_liked: false,
-            likes_count: calculator.likes_count - 1
-          })
-        }
+      if (isLiked) {
+        // Unlike
+        await supabase
+          .from('calculator_likes')
+          .delete()
+          .eq('calculator_id', id)
+          .eq('user_id', user.id);
+        
+        setIsLiked(false);
+        setCalculator(prev => prev ? { ...prev, likes_count: prev.likes_count - 1 } : null);
+        
+        toast({
+          title: "Like removed",
+          description: "Calculator unliked successfully.",
+        });
       } else {
-        const { error } = await calculatorService.likeCalculator(calculator.id)
-        if (!error) {
-          setCalculator({
-            ...calculator,
-            is_liked: true,
-            likes_count: calculator.likes_count + 1
-          })
-        }
+        // Like
+        await supabase
+          .from('calculator_likes')
+          .insert({
+            calculator_id: id,
+            user_id: user.id,
+          });
+        
+        setIsLiked(true);
+        setCalculator(prev => prev ? { ...prev, likes_count: prev.likes_count + 1 } : null);
+        
+        toast({
+          title: "Calculator liked!",
+          description: "Thanks for your feedback.",
+        });
       }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update like status",
-        variant: "destructive",
-      })
+      console.error('Error handling like:', error);
     }
-    setIsLiking(false)
-  }
+  };
 
-  const handleFork = async () => {
-    if (!calculator || !user) {
-      toast({
-        title: "Authentication required",
-        description: "Please sign in to fork calculators",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsForking(true)
-    try {
-      const { data: forkedCalculator, error } = await calculatorService.forkCalculator(calculator.id)
-      if (error) {
-        toast({
-          title: "Fork failed",
-          description: error.message,
-          variant: "destructive",
-        })
-      } else {
-        toast({
-          title: "Calculator forked!",
-          description: `"${calculator.title}" has been forked to your collection.`,
-        })
-        navigate(`/calculator/${forkedCalculator!.id}`)
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to fork calculator",
-        variant: "destructive",
-      })
-    }
-    setIsForking(false)
-  }
-
-  const handleShare = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href)
-      toast({
-        title: "Link copied!",
-        description: "Calculator link copied to clipboard",
-      })
-    } catch (error) {
-      toast({
-        title: "Share failed",
-        description: "Could not copy link to clipboard",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleDelete = (calculatorId: string) => {
-    toast({
-      title: "Calculator deleted",
-      description: "Redirecting to home page...",
-    })
-    navigate('/')
-  }
-
-  const handleInputChange = (fieldId: string, value: string) => {
-    setCalculatorInputs(prev => ({ ...prev, [fieldId]: value }))
-  }
+  const handleFieldChange = (fieldId: string, value: string) => {
+    setFieldValues(prev => ({
+      ...prev,
+      [fieldId]: value
+    }));
+  };
 
   const handleCalculate = () => {
+    if (!calculator) return;
+
     try {
-      const spec = calculator?.spec
-      if (!spec || !spec.fields) {
-        setCalculatorResult("Invalid calculator specification")
-        return
-      }
-
-      // Check if all required fields have values
-      const missingFields = spec.fields.filter((field: any) => 
-        !calculatorInputs[field.id] || calculatorInputs[field.id].trim() === ''
-      )
+      const calculatorSpec = calculator.spec;
       
-      if (missingFields.length > 0) {
-        setCalculatorResult(`Please fill in all fields: ${missingFields.map((f: any) => f.label).join(', ')}`)
-        return
-      }
-
-      // Convert inputs to numbers where needed
-      const inputs: {[key: string]: number} = {}
-      for (const field of spec.fields) {
-        const value = calculatorInputs[field.id]
-        if (field.type === 'number') {
-          const num = parseFloat(value)
-          if (isNaN(num)) {
-            setCalculatorResult(`Invalid number for ${field.label}`)
-            return
-          }
-          inputs[field.id] = num
-        } else {
-          inputs[field.id] = value
+      // Create a safe evaluation context
+      const context = { ...fieldValues };
+      
+      // Convert string values to numbers where appropriate
+      calculatorSpec.fields.forEach((field: CalculatorField) => {
+        if (field.type === 'number' && context[field.id]) {
+          context[field.id] = parseFloat(context[field.id]) || 0;
         }
-      }
+      });
 
-      // Execute calculator-specific logic based on title or formula
-      let result: string
+      // Perform calculation based on the calculator type
+      let calculationResult: string;
+      const title = calculatorSpec.title?.toLowerCase() || '';
 
-      if (spec.title === "Loan Payment Calculator" || spec.formula?.includes("PMT")) {
-        // Loan payment calculation
-        const amount = inputs.amount || 0
-        const rate = (inputs.rate || 0) / 100 / 12  // Convert annual percentage to monthly decimal
-        const term = (inputs.term || 0) * 12  // Convert years to months
+      if (title.includes('loan') || title.includes('payment')) {
+        const amount = context.amount || 0;
+        const rate = (context.rate || 0) / 100 / 12;
+        const term = (context.term || 0) * 12;
         
         if (amount && rate && term) {
-          const payment = (amount * rate * Math.pow(1 + rate, term)) / (Math.pow(1 + rate, term) - 1)
-          result = `$${payment.toFixed(2)} per month`
+          const payment = (amount * rate * Math.pow(1 + rate, term)) / (Math.pow(1 + rate, term) - 1);
+          calculationResult = `Monthly Payment: $${payment.toFixed(2)}`;
         } else {
-          result = "Please check your input values"
+          calculationResult = "Please enter valid values";
         }
-      } else if (spec.title?.toLowerCase().includes("bmi") || spec.title?.toLowerCase().includes("body mass")) {
-        // BMI calculation
-        const weight = inputs.weight || 0
-        const height = inputs.height || 0
+      } else if (title.includes('bmi') || title.includes('body mass')) {
+        const weight = context.weight || 0;
+        const height = context.height || 0;
         if (weight && height) {
-          const bmi = weight / Math.pow(height / 100, 2)  // Assuming height in cm, weight in kg
-          let category = ""
-          if (bmi < 18.5) category = " (Underweight)"
-          else if (bmi < 25) category = " (Normal weight)"
-          else if (bmi < 30) category = " (Overweight)"
-          else category = " (Obese)"
-          result = `BMI: ${bmi.toFixed(1)}${category}`
+          const bmi = weight / Math.pow(height / 100, 2);
+          let category = "";
+          if (bmi < 18.5) category = " (Underweight)";
+          else if (bmi < 25) category = " (Normal)";
+          else if (bmi < 30) category = " (Overweight)";
+          else category = " (Obese)";
+          calculationResult = `BMI: ${bmi.toFixed(1)}${category}`;
         } else {
-          result = "Please enter valid weight and height"
+          calculationResult = "Please enter valid weight and height";
         }
-      } else if (spec.title?.toLowerCase().includes("roi") || spec.title?.toLowerCase().includes("return")) {
-        // ROI calculation
-        const investment = inputs.investment || inputs.cost || 0
-        const return_value = inputs.return || inputs.revenue || inputs.profit || 0
+      } else if (title.includes('tip')) {
+        const bill = context.bill_amount || 0;
+        const tipPercent = context.tip_percentage || 0;
+        const tipAmount = bill * (tipPercent / 100);
+        const total = bill + tipAmount;
+        calculationResult = `Tip: $${tipAmount.toFixed(2)}, Total: $${total.toFixed(2)}`;
+      } else if (title.includes('roi')) {
+        const investment = context.investment || 0;
+        const returnValue = context.return_value || 0;
         if (investment) {
-          const roi = ((return_value - investment) / investment) * 100
-          result = `ROI: ${roi.toFixed(2)}%`
+          const roi = ((returnValue - investment) / investment) * 100;
+          calculationResult = `ROI: ${roi.toFixed(2)}%`;
         } else {
-          result = "Please enter valid investment and return values"
-        }
-      } else if (spec.title?.toLowerCase().includes("mortgage") || spec.title?.toLowerCase().includes("affordability")) {
-        // Mortgage affordability
-        const income = inputs.income || 0
-        const expenses = inputs.expenses || inputs.debt || 0
-        const downPayment = inputs.downPayment || inputs.down_payment || 0
-        const rate = (inputs.rate || inputs.interest_rate || 3.5) / 100 / 12
-        const term = (inputs.term || inputs.years || 30) * 12
-        
-        const maxPayment = (income - expenses) * 0.28 / 12  // 28% debt-to-income ratio
-        const maxLoan = maxPayment * (Math.pow(1 + rate, term) - 1) / (rate * Math.pow(1 + rate, term))
-        const maxPrice = maxLoan + downPayment
-        
-        result = `Max affordable home price: $${maxPrice.toFixed(0)}`
-      } else if (spec.title?.toLowerCase().includes("calorie") || spec.title?.toLowerCase().includes("bmr")) {
-        // BMR and calorie calculation
-        const weight = inputs.weight || 0
-        const height = inputs.height || 0
-        const age = inputs.age || 0
-        const gender = inputs.gender || "male"
-        
-        if (weight && height && age) {
-          // Mifflin-St Jeor Equation
-          let bmr: number
-          if (gender.toLowerCase() === "female") {
-            bmr = 10 * weight + 6.25 * height - 5 * age - 161
-          } else {
-            bmr = 10 * weight + 6.25 * height - 5 * age + 5
-          }
-          
-          const activityMultiplier = inputs.activity_level || 1.2  // Sedentary default
-          const tdee = bmr * activityMultiplier
-          
-          result = `BMR: ${bmr.toFixed(0)} cal/day, TDEE: ${tdee.toFixed(0)} cal/day`
-        } else {
-          result = "Please enter valid weight, height, and age"
+          calculationResult = "Please enter valid investment amount";
         }
       } else {
-        // Generic calculation - try to evaluate simple formulas
-        if (spec.formula) {
-          try {
-            // Replace field names in formula with actual values
-            let formula = spec.formula
-            for (const [key, value] of Object.entries(inputs)) {
-              formula = formula.replace(new RegExp(key, 'g'), value.toString())
-            }
-            
-            // Simple math evaluation (CAUTION: This is not secure for production)
-            // In production, you'd want a proper math expression parser
-            const evalResult = Function('"use strict"; return (' + formula + ')')();
-            result = `Result: ${typeof evalResult === 'number' ? evalResult.toFixed(2) : evalResult}`
-          } catch (e) {
-            result = "Error in formula evaluation"
-          }
-        } else {
-          // Fallback: show all inputs as summary
-          const summary = spec.fields.map((field: any) => 
-            `${field.label}: ${calculatorInputs[field.id]}`
-          ).join(', ')
-          result = `Input summary: ${summary}`
-        }
+        // Generic calculation for custom calculators
+        const values = Object.values(context).filter(v => typeof v === 'number');
+        const sum = values.reduce((a: number, b: number) => a + b, 0);
+        calculationResult = `Result: ${sum.toFixed(2)}`;
       }
-      
-      setCalculatorResult(result)
-    } catch (error) {
-      console.error('Calculation error:', error)
-      setCalculatorResult("Error in calculation")
-    }
-  }
 
-  const isOwner = user && calculator && user.id === calculator.user_id
+      setResult(calculationResult);
+    } catch (error) {
+      console.error('Error calculating result:', error);
+      setResult('Error in calculation');
+    }
+  };
+
+  const renderField = (field: CalculatorField) => {
+    const value = fieldValues[field.id] || '';
+
+    switch (field.type) {
+      case 'select':
+        return (
+          <Select value={value} onValueChange={(val) => handleFieldChange(field.id, val)}>
+            <SelectTrigger>
+              <SelectValue placeholder={field.placeholder || `Select ${field.label}`} />
+            </SelectTrigger>
+            <SelectContent>
+              {field.options?.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      
+      case 'number':
+        return (
+          <Input
+            type="number"
+            placeholder={field.placeholder}
+            value={value}
+            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+          />
+        );
+      
+      default:
+        return (
+          <Input
+            type="text"
+            placeholder={field.placeholder}
+            value={value}
+            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+          />
+        );
+    }
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast({
+        title: "Link copied!",
+        description: "Calculator link copied to clipboard.",
+      });
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
 
   if (loading) {
     return (
-      <Layout>
-        <div className="container py-8">
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin mr-2" />
-            Loading calculator...
-          </div>
-        </div>
-      </Layout>
-    )
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading calculator...</span>
+      </div>
+    );
   }
 
   if (!calculator) {
     return (
-      <Layout>
-        <div className="container py-8">
-          <Card>
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <h2 className="text-2xl font-semibold mb-2">Calculator not found</h2>
-                <p className="text-muted-foreground mb-4">The calculator you're looking for doesn't exist or has been removed.</p>
-                <Button onClick={() => navigate('/')}>
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Home
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="container py-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Calculator not found</h1>
+          <Button onClick={() => navigate('/')}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Home
+          </Button>
         </div>
-      </Layout>
-    )
+      </div>
+    );
   }
 
-  const authorInitials = calculator.profile?.full_name
-    ? calculator.profile.full_name.split(' ').map(n => n[0]).join('')
-    : calculator.profile?.username?.charAt(0).toUpperCase() || '?'
-
   return (
-    <Layout>
-      <div className="container py-8 space-y-6">
+    <div className="container py-8 max-w-4xl">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" onClick={() => navigate(-1)}>
+      <div className="mb-6">
+        <Button 
+          variant="ghost" 
+          onClick={() => navigate('/')}
+          className="mb-4"
+        >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
+          Back to Gallery
         </Button>
-        <div className="flex-1" />
-        {isOwner && (
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Edit className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
-            <DeleteCalculatorDialog
-              calculator={calculator}
-              onDelete={handleDelete}
-            >
-              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </Button>
-            </DeleteCalculatorDialog>
+        
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">{calculator.title}</h1>
+            <p className="text-muted-foreground mb-4">{calculator.prompt}</p>
+            
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+              <span>by {calculator.users?.full_name || calculator.users?.email?.split('@')[0] || 'Anonymous'}</span>
+              <span>•</span>
+              <span>{formatDate(calculator.created_at)}</span>
+            </div>
           </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Calculator */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <CalculatorIcon className="text-primary" />
-                <CardTitle className="text-2xl">{calculator.title}</CardTitle>
-              </div>
-              {calculator.description && (
-                <CardDescription className="text-base">
-                  {calculator.description}
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Calculator Interface */}
-              <div className="space-y-4">
-                {calculator.spec?.fields?.map((field: any) => (
-                  <div key={field.id} className="space-y-2">
-                    <label className="text-sm font-medium">{field.label}</label>
-                    <Input
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      value={calculatorInputs[field.id] || ''}
-                      onChange={(e) => handleInputChange(field.id, e.target.value)}
-                    />
-                  </div>
-                ))}
-                
-                <Button onClick={handleCalculate} className="w-full" size="lg">
-                  {calculator.spec?.cta || 'Calculate'}
-                </Button>
-
-                {calculatorResult && (
-                  <Card>
-                    <CardContent className="p-6">
-                      <h3 className="font-semibold mb-2">Result:</h3>
-                      <p className="text-2xl font-bold text-primary">{calculatorResult}</p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  onClick={handleLike}
-                  disabled={isLiking}
-                  className={calculator.is_liked ? 'text-red-500 border-red-200' : ''}
-                >
-                  <Heart className={`mr-2 h-4 w-4 ${calculator.is_liked ? 'fill-current' : ''}`} />
-                  {calculator.is_liked ? 'Liked' : 'Like'} ({calculator.likes_count})
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={handleFork}
-                  disabled={isForking || calculator.is_forked}
-                >
-                  <GitFork className="mr-2 h-4 w-4" />
-                  {calculator.is_forked ? 'Forked' : isForking ? 'Forking...' : 'Fork'} ({calculator.forks_count})
-                </Button>
-                
-                <ShareCalculatorDialog
-                  calculatorId={calculator.id}
-                  calculatorTitle={calculator.title}
-                  calculatorDescription={calculator.description}
-                >
-                  <Button variant="outline">
-                    <Share2 className="mr-2 h-4 w-4" />
-                    Share
-                  </Button>
-                </ShareCalculatorDialog>
-                
-                <Button variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
-                  Export
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={copyToClipboard}>
+              <Copy className="h-4 w-4 mr-2" />
+              Copy Link
+            </Button>
+            <Button variant="outline" size="sm">
+              <Share2 className="h-4 w-4 mr-2" />
+              Share
+            </Button>
+          </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Author Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">About Creator</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3 mb-4">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={calculator.profile?.avatar_url} />
-                  <AvatarFallback>{authorInitials}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium">
-                    {calculator.profile?.full_name || calculator.profile?.username || 'Anonymous'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Creator</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Calculator Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-2 text-sm">
-                <Eye className="h-4 w-4 text-muted-foreground" />
-                <span>{calculator.views_count} views</span>
-              </div>
-              
-              <div className="flex items-center gap-2 text-sm">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>Created {formatDistanceToNow(new Date(calculator.created_at), { addSuffix: true })}</span>
-              </div>
-
-              {calculator.category && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Tag className="h-4 w-4 text-muted-foreground" />
-                  <Badge variant="secondary">{calculator.category}</Badge>
-                </div>
-              )}
-
-              {calculator.is_template && (
-                <Badge variant="outline" className="w-fit">
-                  Template
-                </Badge>
-              )}
-
-              {calculator.tags && calculator.tags.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Tags</p>
-                  <div className="flex flex-wrap gap-1">
-                    {calculator.tags.map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Specification Preview */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Specification</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="text-xs bg-muted/50 rounded p-3 overflow-auto max-h-40">
-                {JSON.stringify(calculator.spec, null, 2)}
-              </pre>
-            </CardContent>
-          </Card>
+        {/* Stats */}
+        <div className="flex items-center gap-6 mb-6">
+          <div className="flex items-center gap-2">
+            <Eye className="h-4 w-4" />
+            <span className="text-sm">{calculator.views_count || 0} views</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Heart className={`h-4 w-4 ${isLiked ? 'text-red-500 fill-current' : ''}`} />
+            <span className="text-sm">{calculator.likes_count || 0} likes</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLike}
+            className={isLiked ? 'text-red-500' : ''}
+          >
+            {isLiked ? 'Liked' : 'Like'}
+          </Button>
         </div>
       </div>
+
+      {/* Calculator */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calculator className="h-5 w-5" />
+            {calculator.spec.title}
+          </CardTitle>
+          {calculator.spec.description && (
+            <p className="text-muted-foreground">{calculator.spec.description}</p>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid md:grid-cols-3 gap-4">
+            {calculator.spec.fields.map((field: CalculatorField) => (
+              <div key={field.id} className="space-y-2">
+                <label className="text-sm font-medium">{field.label}</label>
+                {renderField(field)}
+              </div>
+            ))}
+          </div>
+          
+          <Button 
+            onClick={handleCalculate}
+            className="w-fit"
+          >
+            {calculator.spec.cta || "Calculate"}
+          </Button>
+          
+          {result && (
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium mb-2">Result:</h4>
+              <p className="text-lg font-semibold text-primary">{result}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
-    </Layout>
-  )
+  );
 }
-
-export default CalculatorView
