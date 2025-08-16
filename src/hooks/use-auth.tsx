@@ -40,17 +40,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_IN' && session?.user) {
         // Create or update user profile
         const { error } = await supabase
-          .from('users')
+          .from('profiles')
           .upsert({
             id: session.user.id,
-            email: session.user.email!,
             full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name,
             avatar_url: session.user.user_metadata?.avatar_url,
             updated_at: new Date().toISOString(),
           });
 
         if (error) {
-          console.error('Error creating user profile:', error);
+          console.error('Error creating or updating user profile:', error);
         }
       }
     });
@@ -110,13 +109,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
     });
 
     if (error) {

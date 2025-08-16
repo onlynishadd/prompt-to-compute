@@ -49,29 +49,6 @@ export const calculatorService = {
     }
 
     try {
-      // First, ensure user has a profile
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', user.user.id)
-        .single()
-
-      if (!existingProfile) {
-        // Create profile if it doesn't exist
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: user.user.id,
-            username: user.user.email,
-            full_name: user.user.user_metadata?.full_name || '',
-            avatar_url: user.user.user_metadata?.avatar_url || ''
-          })
-        
-        if (profileError) {
-          console.error('Profile creation error:', profileError)
-        }
-      }
-
       // Insert calculator
       const { data: calculator, error } = await supabase
         .from('calculators')
