@@ -48,7 +48,7 @@ export default function CalculatorGallery({ onCalculatorSelect }: CalculatorGall
         .from('calculators')
         .select(`
           *,
-          users (
+          profile:profiles (
             full_name,
             email
           )
