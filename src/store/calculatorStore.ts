@@ -12,6 +12,10 @@ interface CalculatorState {
   generate: () => Promise<void>;
   saveCalculator: (title: string, isPublic?: boolean) => Promise<void>;
   loadUserCalculators: () => Promise<void>;
+  likeCalculator: (calculatorId: string) => Promise<void>;
+  unlikeCalculator: (calculatorId: string) => Promise<void>;
+  incrementViews: (calculatorId: string) => Promise<void>;
+  deleteCalculator: (calculatorId: string) => Promise<void>;
   reset: () => void;
 }
 
@@ -30,10 +34,15 @@ export const useCalculatorStore = create<CalculatorState>((set, get) => ({
   
   generate: async () => {
     if (get().generating) return;
-    set({ generating: true });
+    set({ generating: true, spec: null }); // Also reset previous spec
 
     try {
       const prompt = get().prompt;
+      
+      if (!prompt.trim()) {
+        console.error("Prompt is empty, cannot generate.");
+        return;
+      }
       
       if (!GEMINI_API_KEY) {
         throw new Error("Gemini API key not configured");
@@ -208,6 +217,140 @@ Make sure the response is valid JSON only, no additional text.`
     } catch (error) {
       console.error('Error loading calculators:', error);
       set({ loadingCalculators: false });
+    }
+  },
+
+  likeCalculator: async (calculatorId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to like calculators.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('calculator_likes')
+        .insert({
+          calculator_id: calculatorId,
+          user_id: user.id,
+        });
+
+      if (error) {
+        if (error.code === '23505') { // Unique constraint violation
+          toast({
+            title: "Already liked",
+            description: "You've already liked this calculator.",
+          });
+        } else {
+          throw error;
+        }
+      } else {
+        toast({
+          title: "Calculator liked!",
+          description: "Thanks for your feedback.",
+        });
+      }
+
+      // Reload calculators to update like count
+      get().loadUserCalculators();
+    } catch (error) {
+      console.error('Error liking calculator:', error);
+      toast({
+        title: "Like failed",
+        description: "Failed to like calculator. Please try again.",
+        variant: "destructive",
+      });
+    }
+  },
+
+  unlikeCalculator: async (calculatorId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return;
+      }
+
+      const { error } = await supabase
+        .from('calculator_likes')
+        .delete()
+        .eq('calculator_id', calculatorId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Like removed",
+        description: "Calculator unliked successfully.",
+      });
+
+      // Reload calculators to update like count
+      get().loadUserCalculators();
+    } catch (error) {
+      console.error('Error unliking calculator:', error);
+      toast({
+        title: "Unlike failed",
+        description: "Failed to unlike calculator. Please try again.",
+        variant: "destructive",
+      });
+    }
+  },
+
+  incrementViews: async (calculatorId: string) => {
+    try {
+      const { error } = await supabase.rpc('increment_calculator_views', {
+        calc_id: calculatorId
+      });
+
+      if (error) {
+        console.error('Error incrementing views:', error);
+      }
+    } catch (error) {
+      console.error('Error incrementing views:', error);
+    }
+  },
+
+  deleteCalculator: async (calculatorId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to delete calculators.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('calculators')
+        .delete()
+        .eq('id', calculatorId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Calculator deleted!",
+        description: "Your calculator has been deleted successfully.",
+      });
+
+      // Reload user calculators
+      get().loadUserCalculators();
+    } catch (error) {
+      console.error('Error deleting calculator:', error);
+      toast({
+        title: "Delete failed",
+        description: "Failed to delete calculator. Please try again.",
+        variant: "destructive",
+      });
     }
   },
 }));

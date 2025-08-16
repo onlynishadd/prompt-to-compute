@@ -55,3 +55,4 @@ export default function AuthModal({ open, onOpenChange, defaultView = 'signin' }
     </Dialog>
   );
 }
+

@@ -92,3 +92,4 @@ CREATE TRIGGER handle_users_updated_at
 CREATE TRIGGER handle_calculators_updated_at
     BEFORE UPDATE ON public.calculators
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+

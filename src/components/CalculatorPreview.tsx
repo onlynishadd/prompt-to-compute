@@ -5,10 +5,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calculator, Save, Loader2, Eye, EyeOff } from "lucide-react";
+import { Calculator, Save, Loader2, Eye, EyeOff, Heart, Trash2, Eye as ViewIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface CalculatorField {
   id: string;
@@ -27,7 +28,7 @@ interface CalculatorSpec {
 }
 
 export default function CalculatorPreview() {
-  const { spec, generating, saveCalculator, savedCalculators, loadUserCalculators, loadingCalculators } = useCalculatorStore();
+  const { spec, generating, saveCalculator, savedCalculators, loadUserCalculators, loadingCalculators, likeCalculator, unlikeCalculator, incrementViews, deleteCalculator } = useCalculatorStore();
   const { user } = useAuth();
   const [showSpec, setShowSpec] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -94,16 +95,58 @@ export default function CalculatorPreview() {
         }
       });
 
-      // For now, we'll use a simple approach - in production you'd want more sophisticated formula evaluation
-      let calculatedResult = 'Calculation completed';
-      
-      // You could implement a more sophisticated formula evaluator here
-      // For now, we'll just show that calculation was attempted
-      if (calculatorSpec.formula) {
-        calculatedResult = `Formula: ${calculatorSpec.formula}`;
+      // Perform calculation based on the calculator type
+      let calculationResult: string;
+      const title = calculatorSpec.title?.toLowerCase() || '';
+
+      if (title.includes('loan') || title.includes('payment')) {
+        const amount = context.amount || 0;
+        const rate = (context.rate || 0) / 100 / 12;
+        const term = (context.term || 0) * 12;
+        
+        if (amount && rate && term) {
+          const payment = (amount * rate * Math.pow(1 + rate, term)) / (Math.pow(1 + rate, term) - 1);
+          calculationResult = `Monthly Payment: $${payment.toFixed(2)}`;
+        } else {
+          calculationResult = "Please enter valid values";
+        }
+      } else if (title.includes('bmi') || title.includes('body mass')) {
+        const weight = context.weight || 0;
+        const height = context.height || 0;
+        if (weight && height) {
+          const bmi = weight / Math.pow(height / 100, 2);
+          let category = "";
+          if (bmi < 18.5) category = " (Underweight)";
+          else if (bmi < 25) category = " (Normal)";
+          else if (bmi < 30) category = " (Overweight)";
+          else category = " (Obese)";
+          calculationResult = `BMI: ${bmi.toFixed(1)}${category}`;
+        } else {
+          calculationResult = "Please enter valid weight and height";
+        }
+      } else if (title.includes('tip')) {
+        const bill = context.bill_amount || 0;
+        const tipPercent = context.tip_percentage || 0;
+        const tipAmount = bill * (tipPercent / 100);
+        const total = bill + tipAmount;
+        calculationResult = `Tip: $${tipAmount.toFixed(2)}, Total: $${total.toFixed(2)}`;
+      } else if (title.includes('roi')) {
+        const investment = context.investment || 0;
+        const returnValue = context.return_value || 0;
+        if (investment) {
+          const roi = ((returnValue - investment) / investment) * 100;
+          calculationResult = `ROI: ${roi.toFixed(2)}%`;
+        } else {
+          calculationResult = "Please enter valid investment amount";
+        }
+      } else {
+        // Generic calculation for custom calculators
+        const values = Object.values(context).filter(v => typeof v === 'number');
+        const sum = values.reduce((a: number, b: number) => a + b, 0);
+        calculationResult = `Result: ${sum.toFixed(2)}`;
       }
 
-      setResult(calculatedResult);
+      setResult(calculationResult);
     } catch (error) {
       console.error('Error calculating result:', error);
       setResult('Error in calculation');
@@ -296,19 +339,60 @@ export default function CalculatorPreview() {
                 <div className="grid gap-3">
                   {savedCalculators.map((calc) => (
                     <div key={calc.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
+                      <div className="flex-1">
                         <h4 className="font-medium">{calc.title}</h4>
                         <p className="text-sm text-muted-foreground">{calc.prompt}</p>
+                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Heart className="h-3 w-3" />
+                            {calc.likes_count || 0} likes
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <ViewIcon className="h-3 w-3" />
+                            {calc.views_count || 0} views
+                          </span>
+                          {calc.is_public && (
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                              Public
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {calc.is_public && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                            Public
-                          </span>
-                        )}
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => likeCalculator(calc.id)}
+                        >
+                          <Heart className="h-4 w-4" />
+                        </Button>
                         <Button variant="outline" size="sm">
                           View
                         </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Calculator</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete "{calc.title}"? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => deleteCalculator(calc.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   ))}

@@ -33,8 +33,8 @@ A modern web application that generates interactive calculators from natural lan
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-repo-url>
-cd prompt-to-compute-1
+git clone https://github.com/onlynishadd/prompt-to-compute.git
+cd prompt-to-compute
 ```
 
 ### 2. Install Dependencies

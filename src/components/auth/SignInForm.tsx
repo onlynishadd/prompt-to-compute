@@ -13,11 +13,12 @@ interface SignInFormProps {
 }
 
 export default function SignInForm({ onSwitchToSignUp, onSwitchToResetPassword }: SignInFormProps) {
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +26,12 @@ export default function SignInForm({ onSwitchToSignUp, onSwitchToResetPassword }
     
     await signIn(email, password);
     setLoading(false);
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    await signInWithGoogle();
+    setGoogleLoading(false);
   };
 
   return (
@@ -95,11 +102,24 @@ export default function SignInForm({ onSwitchToSignUp, onSwitchToResetPassword }
           
           <Separator className="my-4" />
           
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading}
+          >
+            {googleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Continue with Google
+          </Button>
+          
+          <Separator className="my-4" />
+          
           <div className="text-center text-sm">
             Don't have an account?{' '}
             <Button
               variant="link"
-              className="p-0 h-auto font-semibold"
+              className="p-0 text-sm"
               onClick={onSwitchToSignUp}
             >
               Sign up
@@ -110,3 +130,4 @@ export default function SignInForm({ onSwitchToSignUp, onSwitchToResetPassword }
     </Card>
   );
 }
+
