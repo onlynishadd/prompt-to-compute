@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCalculatorStore } from "@/store/calculatorStore";
+<<<<<<< HEAD
 import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -238,6 +239,17 @@ export default function CalculatorPreview() {
       return <p className="text-red-500">Error rendering calculator</p>;
     }
   };
+=======
+import { useAuthStore } from "@/store/authStore";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Calculator, Save } from "lucide-react";
+import { toast } from "sonner";
+
+export default function CalculatorPreview() {
+  const { spec, generating, saveCalculator } = useCalculatorStore();
+  const { user } = useAuthStore();
+>>>>>>> f1f82f9 (Fix Google sign-in OAuth and restore calculator save functionality)
 
   return (
     <section aria-label="Calculator preview">
@@ -397,11 +409,37 @@ export default function CalculatorPreview() {
                     </div>
                   ))}
                 </div>
+<<<<<<< HEAD
               ) : (
                 <p className="text-muted-foreground text-center py-8">
                   No calculators saved yet. Generate and save your first calculator!
                 </p>
               )}
+=======
+                <div className="grid gap-1">
+                  <label className="text-sm">Years</label>
+                  <Input placeholder="5" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button className="w-fit" variant="default">Calculate Payment</Button>
+                <Button
+                  className="w-fit"
+                  variant="outline"
+                  disabled={!user || !spec}
+                  onClick={async () => {
+                    toast.promise(saveCalculator(), {
+                      loading: "Saving calculator...",
+                      success: "Calculator saved!",
+                      error: (err) => err.message || "Failed to save calculator.",
+                    });
+                  }}
+                ><Save /> Save</Button>
+              </div>
+              <pre className="text-xs bg-muted/50 rounded p-3 overflow-auto">
+                {spec}
+              </pre>
+>>>>>>> f1f82f9 (Fix Google sign-in OAuth and restore calculator save functionality)
             </div>
           )}
         </CardContent>
