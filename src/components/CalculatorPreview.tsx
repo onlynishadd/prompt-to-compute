@@ -96,55 +96,16 @@ export default function CalculatorPreview() {
         }
       });
 
-      // Perform calculation based on the calculator type
+      // Safely evaluate the formula
       let calculationResult: string;
-      const title = calculatorSpec.title?.toLowerCase() || '';
-
-      if (title.includes('loan') || title.includes('payment')) {
-        const amount = context.amount || 0;
-        const rate = (context.rate || 0) / 100 / 12;
-        const term = (context.term || 0) * 12;
-        
-        if (amount && rate && term) {
-          const payment = (amount * rate * Math.pow(1 + rate, term)) / (Math.pow(1 + rate, term) - 1);
-          calculationResult = `Monthly Payment: ${payment.toFixed(2)}`;
-        } else {
-          calculationResult = "Please enter valid values";
-        }
-      } else if (title.includes('bmi') || title.includes('body mass')) {
-        const weight = context.weight || 0;
-        const height = context.height || 0;
-        if (weight && height) {
-          const bmi = weight / Math.pow(height / 100, 2);
-          let category = "";
-          if (bmi < 18.5) category = " (Underweight)";
-          else if (bmi < 25) category = " (Normal)";
-          else if (bmi < 30) category = " (Overweight)";
-          else category = " (Obese)";
-          calculationResult = `BMI: ${bmi.toFixed(1)}${category}`;
-        } else {
-          calculationResult = "Please enter valid weight and height";
-        }
-      } else if (title.includes('tip')) {
-        const bill = context.bill_amount || 0;
-        const tipPercent = context.tip_percentage || 0;
-        const tipAmount = bill * (tipPercent / 100);
-        const total = bill + tipAmount;
-        calculationResult = `Tip: ${tipAmount.toFixed(2)}, Total: ${total.toFixed(2)}`;
-      } else if (title.includes('roi')) {
-        const investment = context.investment || 0;
-        const returnValue = context.return_value || 0;
-        if (investment) {
-          const roi = ((returnValue - investment) / investment) * 100;
-          calculationResult = `ROI: ${roi.toFixed(2)}%`;
-        } else {
-          calculationResult = "Please enter valid investment amount";
-        }
-      } else {
-        // Generic calculation for custom calculators
-        const values = Object.values(context).filter(v => typeof v === 'number');
-        const sum = values.reduce((a: number, b: number) => a + b, 0);
-        calculationResult = `Result: ${sum.toFixed(2)}`;
+      try {
+        // Create a function from the formula string
+        const evaluateFormula = new Function('context', `with(context) { return ${calculatorSpec.formula}; }`);
+        const resultValue = evaluateFormula(context);
+        calculationResult = `Result: ${resultValue.toFixed(2)}`; // Assuming numeric result
+      } catch (formulaError) {
+        console.error('Error evaluating formula:', formulaError);
+        calculationResult = 'Error in formula calculation';
       }
 
       setResult(calculationResult);
