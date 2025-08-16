@@ -126,13 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithGoogle = async () => {
     // Get the base URL for redirects
     const getRedirectUrl = () => {
-      if (import.meta.env.VITE_APP_URL) {
-        return import.meta.env.VITE_APP_URL
-      }
-      if (import.meta.env.PROD) {
-        return 'https://finalcalcisite-lpoq4gict-nishads-projects-9f01287f.vercel.app'
-      }
-      return window.location.origin
+      return window.location.origin + '/auth/callback';
     }
     
     const { data, error } = await supabase.auth.signInWithOAuth({
