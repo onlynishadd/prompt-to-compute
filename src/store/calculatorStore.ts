@@ -161,20 +161,31 @@ Make sure the response is valid JSON only, no additional text.`
         return;
       }
 
-      const { error } = await supabase
+      console.log('Saving calculator:', { title, isPublic, user: user.id });
+      console.log('Calculator spec:', spec);
+
+      const calculatorData = {
+        user_id: user.id,
+        title,
+        prompt,
+        spec: JSON.parse(spec),
+        is_public: isPublic,
+        slug: title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+      };
+
+      console.log('Calculator data to insert:', calculatorData);
+
+      const { data, error } = await supabase
         .from('calculators')
-        .insert({
-          user_id: user.id,
-          title,
-          prompt,
-          spec: JSON.parse(spec),
-          is_public: isPublic,
-          slug: title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
-        });
+        .insert(calculatorData)
+        .select();
 
       if (error) {
+        console.error('Supabase error:', error);
         throw error;
       }
+
+      console.log('Calculator saved successfully:', data);
 
       toast({
         title: "Calculator saved!",
@@ -187,7 +198,7 @@ Make sure the response is valid JSON only, no additional text.`
       console.error('Error saving calculator:', error);
       toast({
         title: "Save failed",
-        description: "Failed to save calculator. Please try again.",
+        description: `Failed to save calculator: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
     }
@@ -199,9 +210,12 @@ Make sure the response is valid JSON only, no additional text.`
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        console.log('No user found, clearing calculators');
         set({ savedCalculators: [], loadingCalculators: false });
         return;
       }
+
+      console.log('Loading calculators for user:', user.id);
 
       const { data, error } = await supabase
         .from('calculators')
@@ -210,12 +224,19 @@ Make sure the response is valid JSON only, no additional text.`
         .order('created_at', { ascending: false });
 
       if (error) {
+        console.error('Supabase error loading calculators:', error);
         throw error;
       }
 
+      console.log('Loaded calculators:', data);
       set({ savedCalculators: data || [], loadingCalculators: false });
     } catch (error) {
       console.error('Error loading calculators:', error);
+      toast({
+        title: "Error loading calculators",
+        description: `Failed to load your calculators: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive",
+      });
       set({ loadingCalculators: false });
     }
   },
