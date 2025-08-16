@@ -1,5 +1,5 @@
 import React from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/hooks/use-auth'
 import { LoginDialog } from '@/components/auth/LoginDialog'
 import { UserProfile } from '@/components/auth/UserProfile'
 import { Button } from '@/components/ui/button'

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/hooks/use-auth'
 import { Layout } from '@/components/layout/Layout'
 import { calculatorService, Calculator } from '@/services/calculatorService'
 import { CalculatorCard } from '@/components/calculator/CalculatorCard'
